@@ -21,12 +21,18 @@ package org.mapstruct.intellij;
 import java.io.File;
 
 import com.intellij.codeInsight.completion.LightFixtureCompletionTestCase;
+import com.intellij.openapi.command.WriteCommandAction;
 import com.intellij.openapi.module.Module;
 import com.intellij.openapi.projectRoots.JavaSdk;
 import com.intellij.openapi.projectRoots.Sdk;
 import com.intellij.openapi.roots.ContentEntry;
 import com.intellij.openapi.roots.LanguageLevelModuleExtension;
 import com.intellij.openapi.roots.ModifiableRootModel;
+import com.intellij.openapi.roots.ModuleRootModificationUtil;
+import com.intellij.openapi.roots.impl.libraries.ProjectLibraryTable;
+import com.intellij.openapi.roots.libraries.Library;
+import com.intellij.openapi.roots.libraries.LibraryTable;
+import com.intellij.openapi.util.Ref;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.openapi.vfs.newvfs.impl.VfsRootAccess;
 import com.intellij.pom.java.LanguageLevel;
@@ -48,13 +54,38 @@ public abstract class MapstructBaseCompletionTestCase extends LightFixtureComple
     private static final String BUILD_LIBS_DIRECTORY = "build/libs";
     private static final String BUILD_MOCK_JDK_DIRECTORY = "build/mockJDK-";
 
+    private Ref<Library> ref = Ref.create();
+
     @Override
     protected void setUp() throws Exception {
         super.setUp();
         final String mapstructLibPath = PathUtil.toSystemIndependentName( new File( BUILD_LIBS_DIRECTORY )
             .getAbsolutePath() );
         VfsRootAccess.allowRootAccess( mapstructLibPath );
-        PsiTestUtil.addLibrary( getModule(), "Mapstruct", mapstructLibPath, "mapstruct.jar" );
+        Module module = getModule();
+        ModuleRootModificationUtil.updateModel( module, model -> {
+            ref.set( PsiTestUtil.addLibrary( module, model, "Mapstruct", mapstructLibPath, "mapstruct.jar" ) );
+        } );
+    }
+
+    @Override
+    public void tearDown() throws Exception {
+        // Setup for tearing down and setting up library comes from
+        // https://intellij-support.jetbrains.com/hc/en-us/community/posts/115000648324
+        if ( !ref.isNull() ) {
+            removeLibrary( ref.get() );
+        }
+        super.tearDown();
+    }
+
+    private void removeLibrary(Library library) {
+        WriteCommandAction.runWriteCommandAction( null, () -> {
+            LibraryTable table = ProjectLibraryTable.getInstance( getProject() );
+            LibraryTable.ModifiableModel model = table.getModifiableModel();
+            model.removeLibrary( library );
+            model.commit();
+
+        } );
     }
 
     protected void addDirectoryToProject(@NotNull String directory) {
