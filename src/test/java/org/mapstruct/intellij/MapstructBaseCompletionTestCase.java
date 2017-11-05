@@ -19,6 +19,9 @@
 package org.mapstruct.intellij;
 
 import java.io.File;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 
 import com.intellij.codeInsight.completion.LightFixtureCompletionTestCase;
 import com.intellij.openapi.command.WriteCommandAction;
@@ -28,12 +31,14 @@ import com.intellij.openapi.projectRoots.Sdk;
 import com.intellij.openapi.roots.ContentEntry;
 import com.intellij.openapi.roots.LanguageLevelModuleExtension;
 import com.intellij.openapi.roots.ModifiableRootModel;
-import com.intellij.openapi.roots.ModuleRootModificationUtil;
 import com.intellij.openapi.roots.impl.libraries.ProjectLibraryTable;
 import com.intellij.openapi.roots.libraries.Library;
 import com.intellij.openapi.roots.libraries.LibraryTable;
 import com.intellij.openapi.util.Ref;
 import com.intellij.openapi.util.text.StringUtil;
+import com.intellij.openapi.vfs.JarFileSystem;
+import com.intellij.openapi.vfs.LocalFileSystem;
+import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.openapi.vfs.newvfs.impl.VfsRootAccess;
 import com.intellij.pom.java.LanguageLevel;
 import com.intellij.testFramework.LightProjectDescriptor;
@@ -63,9 +68,36 @@ public abstract class MapstructBaseCompletionTestCase extends LightFixtureComple
             .getAbsolutePath() );
         VfsRootAccess.allowRootAccess( mapstructLibPath );
         Module module = getModule();
-        ModuleRootModificationUtil.updateModel( module, model -> {
-            ref.set( PsiTestUtil.addLibrary( module, model, "Mapstruct", mapstructLibPath, "mapstruct.jar" ) );
-        } );
+        ref.set( addLibrary( module, "Mapstruct", mapstructLibPath, "mapstruct.jar" ) );
+    }
+
+    /**
+     * This is exactly the same as
+     * {@link PsiTestUtil#addLibrary(Module, ModifiableRootModel, String, String, String...)}
+     * with the only difference that this one returns a {@link Library}. This is needed, because in 2017.3
+     * the tests need to be disposed. However, the needed function does not return {@link Library}.
+     */
+    private static Library addLibrary(Module module,
+        String libName,
+        String libPath,
+        String... jarArr) {
+        List<VirtualFile> classesRoots = new ArrayList<>();
+        for ( String jar : jarArr ) {
+            if ( !libPath.endsWith( "/" ) && !jar.startsWith( "/" ) ) {
+                jar = "/" + jar;
+            }
+            String path = libPath + jar;
+            VirtualFile root;
+            if ( path.endsWith( ".jar" ) ) {
+                root = JarFileSystem.getInstance().refreshAndFindFileByPath( path + "!/" );
+            }
+            else {
+                root = LocalFileSystem.getInstance().refreshAndFindFileByPath( path );
+            }
+            assert root != null : "Library root folder not found: " + path + "!/";
+            classesRoots.add( root );
+        }
+        return PsiTestUtil.addProjectLibrary( module, libName, classesRoots, Collections.emptyList() );
     }
 
     @Override
